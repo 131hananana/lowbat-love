@@ -172,7 +172,7 @@ async function send(text, tag, priority){
 async function loadInbox(){
   const ul = $('inbox');
   try {
-    const r = await fetch(NTFY + topic() + '/json?poll=1&since=24h');
+    const r = await fetch(NTFY + topic() + '/json?poll=1&since=24h', {cache:'no-store'});
     const lines = (await r.text()).trim().split('\n').filter(Boolean);
     const msgs = lines.map(l => JSON.parse(l)).filter(m => m.event === 'message').slice(-15).reverse();
     ul.replaceChildren();
