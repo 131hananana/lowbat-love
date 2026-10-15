@@ -75,11 +75,19 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:32px
         <button id="genCode" type="button">New</button>
       </div>
       <button class="primary" id="saveSetup" type="button">Save</button>
-      <p class="muted" style="margin:0">Make a code on one phone, send it to the other person, and they paste it here. Keep it private: anyone with the code can read your pings.</p>
+      <p class="muted" style="margin:0">Make a code on one phone only, then send the pair link to the other phone. Use a different name on each phone. Keep it private: anyone with the code can read your pings.</p>
     </div>
   </section>
 
   <div id="app" hidden style="display:grid;gap:14px">
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span class="muted">Pair <code id="pairShort"></code> <span id="liveDot" hidden style="color:var(--ok)">● live</span></span>
+        <button id="copyLink" type="button" style="min-height:36px;padding:6px 12px">Copy pair link</button>
+      </div>
+      <p class="muted" style="margin:8px 0 0">Open this link on the other phone to connect it. Both phones must show the same pair code.</p>
+      <p style="margin:6px 0 0"><code id="linkShow"></code></p>
+    </section>
     <!-- Battery: the core feature -->
     <section class="card" id="batCard">
       <h2>Battery</h2>
@@ -226,7 +234,7 @@ function renderStatuses(msgs){
 }
 
 function renderBattery(){
-  if (!battery){ $('batPct').textContent = '?'; $('batNote').textContent = 'This browser hides battery level.'; return; }
+  if (!battery){ $('batPct').textContent = '?'; $('batNote').textContent = 'This browser doesn\'t share battery level (iPhone and Firefox never do). The button below still works.'; return; }
   const pct = Math.round(battery.level * 100);
   const low = pct <= 15 && !battery.charging;
   $('batPct').textContent = pct + '%';
@@ -250,12 +258,14 @@ function show(){
   $('whoami').textContent = store.get('name');
   $('topicShow').textContent = topic();
   $('codeShow').textContent = store.get('code');
-  renderCountdown(); loadInbox();
+  $('pairShort').textContent = store.get('code').slice(0, 4) + '…';
+  $('linkShow').textContent = pairLink();
+  renderCountdown(); loadInbox(); goLive();
 }
 
 // Pair code can arrive in the link: page.html#p=CODE
 const fromLink = (location.hash.match(/p=([a-z0-9]{6,40})/) || [])[1];
-if (fromLink && !store.get('code')) $('pairCode').value = fromLink;
+function pairLink(){ return location.origin + location.pathname + '#p=' + store.get('code'); }
 
 $('genCode').onclick = () => $('pairCode').value = randomCode();
 $('saveSetup').onclick = () => {
@@ -297,7 +307,33 @@ if (navigator.getBattery){
   }).catch(renderBattery);
 } else renderBattery();
 
-document.addEventListener('visibilitychange', () => { if (!document.hidden && store.get('code')) loadInbox(); });
+// Live updates only while the app is on screen; the connection closes when it's hidden to save battery.
+let live = null, liveTimer = null;
+function goLive(){
+  stopLive();
+  if (document.hidden || !store.get('code') || !window.EventSource) return;
+  live = new EventSource(NTFY + topic() + '/sse');
+  live.onmessage = () => { clearTimeout(liveTimer); liveTimer = setTimeout(loadInbox, 800); };
+  live.onopen = () => $('liveDot').hidden = false;
+  live.onerror = () => $('liveDot').hidden = true;
+}
+function stopLive(){ if (live){ live.close(); live = null; } $('liveDot').hidden = true; }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return stopLive();
+  if (store.get('code')){ loadInbox(); goLive(); }
+});
+
+$('copyLink').onclick = () => {
+  const link = pairLink();
+  navigator.clipboard.writeText(link).then(() => toast('Link copied. Send it to the other phone.'), () => toast('Long-press the link to copy it'));
+};
+
+// Pair code from a link (#p=CODE) always wins, so opening the shared link re-pairs a device.
+if (fromLink && fromLink !== store.get('code')){
+  if (store.get('name')){ store.set('code', fromLink); toast('Paired with the new code'); }
+  else $('pairCode').value = fromLink;
+}
+if (fromLink) history.replaceState(null, '', location.pathname);
 show();
 </script>
 </body>
