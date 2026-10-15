@@ -47,6 +47,8 @@ li{display:grid;gap:2px;padding-bottom:8px;border-bottom:1px solid var(--line)}
 li:last-child{border:0;padding:0}
 li .meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 li.me .meta::after{content:" · you"}
+.status-now{font-size:22px;font-weight:600}
+.grid button.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .big{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0));max-width:460px;margin:0 auto;
   background:var(--fg);color:var(--bg);padding:12px 14px;border-radius:10px;text-align:center}
@@ -85,6 +87,17 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:32px
       <div style="margin-top:10px">
         <button class="primary" id="dyingBtn" type="button" style="width:100%">My phone is dying, not ignoring you</button>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>Your person right now</h2>
+      <div class="status-now" id="theirStatus">No update yet</div>
+      <div class="muted" id="theirStatusMeta"></div>
+    </section>
+
+    <section class="card">
+      <h2>I'm…</h2>
+      <div class="grid" id="statuses"></div>
     </section>
 
     <section class="card">
@@ -131,9 +144,13 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:32px
 <script>
 // Messages go through ntfy.sh: free, no account, push via Firebase on Android.
 const NTFY = 'https://ntfy.sh/';
+const STATUSES = [
+  ['🏫','In school'], ['⚽','At football'], ['🏀','At basketball'],
+  ['🍱','Having lunch'], ['🍻','Out with friends'], ['😴','Sleeping']
+];
 const PINGS = [
-  ['💗','Miss you'], ['🏠','Home safe'], ['😴','Going to sleep'], ['☀️','Good morning'],
-  ['📵','Busy, talk later'], ['📞','Call me when free'], ['🍜','Eating now'], ['🫂','Need a hug']
+  ['💗','Miss you'], ['☀️','Good morning'], ['🏠','Home safe'],
+  ['📞','Call me when free'], ['📵','Busy, talk later'], ['🫂','Need a hug']
 ];
 const $ = id => document.getElementById(id);
 const store = {
@@ -174,7 +191,9 @@ async function loadInbox(){
   try {
     const r = await fetch(NTFY + topic() + '/json?poll=1&since=24h', {cache:'no-store'});
     const lines = (await r.text()).trim().split('\n').filter(Boolean);
-    const msgs = lines.map(l => JSON.parse(l)).filter(m => m.event === 'message').slice(-15).reverse();
+    const all = lines.map(l => JSON.parse(l)).filter(m => m.event === 'message');
+    renderStatuses(all);
+    const msgs = all.slice(-15).reverse();
     ul.replaceChildren();
     if (!msgs.length){ $('inboxNote').textContent = 'Nothing in the last 24 hours yet. Send the first ping.'; return; }
     $('inboxNote').textContent = 'Last 24 hours · updated ' + hhmm(new Date());
@@ -189,6 +208,21 @@ async function loadInbox(){
   } catch {
     $('inboxNote').textContent = 'Could not load messages. Check your connection and tap Refresh.';
   }
+}
+
+// Latest status (or dying-battery note) from each side. Statuses older than 6h are shown as stale.
+function renderStatuses(msgs){
+  const me = store.get('name');
+  const isStatus = m => (m.tags || []).some(t => t === 'status' || t === 'battery');
+  const theirs = msgs.filter(m => isStatus(m) && m.title !== me).pop();
+  const mine = msgs.filter(m => isStatus(m) && m.title === me).pop();
+  if (theirs){
+    const when = new Date(theirs.time * 1000);
+    const stale = Date.now() - when > 6 * 36e5;
+    $('theirStatus').textContent = theirs.message.split('.')[0];
+    $('theirStatusMeta').textContent = (theirs.title || 'Someone') + ' · since ' + hhmm(when) + (stale ? ' (a while ago)' : '');
+  }
+  for (const b of $('statuses').children) b.classList.toggle('on', !!mine && mine.message === b.textContent);
 }
 
 function renderBattery(){
@@ -232,6 +266,12 @@ $('saveSetup').onclick = () => {
 };
 $('reset').onclick = () => { $('pairCode').value = store.get('code'); $('setup').hidden = false; $('app').hidden = true; };
 
+for (const [icon, label] of STATUSES){
+  const b = document.createElement('button'); b.type = 'button';
+  b.textContent = icon + ' ' + label;
+  b.onclick = () => send(icon + ' ' + label, 'status', '2'); // low priority: no buzz for routine updates
+  $('statuses').append(b);
+}
 for (const [icon, label] of PINGS){
   const b = document.createElement('button'); b.type = 'button';
   b.textContent = icon + ' ' + label;
