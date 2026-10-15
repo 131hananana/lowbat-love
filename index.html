@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d1a24">
+<title>Lowbat Love</title>
+<style>
+/* One narrow column, big thumb-sized buttons, no fonts to download, no animation. */
+:root{
+  --bg:#f6f4f8; --card:#ffffff; --fg:#1d1a24; --muted:#6c6677;
+  --line:#e2dde8; --accent:#c2366b; --accent-fg:#fff; --warn:#b85c00; --ok:#2f7d4f;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141218; --card:#1f1c25; --fg:#eeeaf3; --muted:#9b94a6;
+  --line:#2f2a37; --accent:#e5588d; --accent-fg:#1a0b11; --warn:#f0a050; --ok:#6cc48f;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,Roboto,"Segoe UI",sans-serif;
+  padding:env(safe-area-inset-top,0) 16px calc(24px + env(safe-area-inset-bottom,0))}
+main{max-width:460px;margin:0 auto;display:grid;gap:14px;padding-top:14px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h1{font-size:20px;margin:0;letter-spacing:-.01em}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.muted{color:var(--muted);font-size:14px}
+button,input{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px;min-height:48px;cursor:pointer;text-align:left}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.5}
+.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600;text-align:center}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:12px;min-height:48px}
+.row{display:flex;gap:8px}
+.row input{flex:1;min-width:0}
+.bat{display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums}
+.bat b{font-size:28px}
+.low{color:var(--warn)}
+.dying{border-color:var(--warn)}
+.dying .primary{background:var(--warn);border-color:var(--warn)}
+ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+li{display:grid;gap:2px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+li:last-child{border:0;padding:0}
+li .meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+li.me .meta::after{content:" · you"}
+.big{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0));max-width:460px;margin:0 auto;
+  background:var(--fg);color:var(--bg);padding:12px 14px;border-radius:10px;text-align:center}
+code{font-size:13px;word-break:break-all}
+details summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:32px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Lowbat Love</h1>
+    <span class="muted" id="whoami"></span>
+  </header>
+
+  <!-- Setup: shown until both names and a pair code exist -->
+  <section class="card" id="setup" hidden>
+    <h2>Set up</h2>
+    <div style="display:grid;gap:8px">
+      <label for="myName" class="muted">Your name</label>
+      <input id="myName" placeholder="e.g. Hana" maxlength="20" autocomplete="off">
+      <label for="pairCode" class="muted">Pair code (same on both phones)</label>
+      <div class="row">
+        <input id="pairCode" placeholder="paste or generate" autocomplete="off">
+        <button id="genCode" type="button">New</button>
+      </div>
+      <button class="primary" id="saveSetup" type="button">Save</button>
+      <p class="muted" style="margin:0">Make a code on one phone, send it to the other person, and they paste it here. Keep it private: anyone with the code can read your pings.</p>
+    </div>
+  </section>
+
+  <div id="app" hidden style="display:grid;gap:14px">
+    <!-- Battery: the core feature -->
+    <section class="card" id="batCard">
+      <h2>Battery</h2>
+      <div class="bat"><b id="batPct">–</b><span class="muted" id="batNote">checking…</span></div>
+      <div style="margin-top:10px">
+        <button class="primary" id="dyingBtn" type="button" style="width:100%">My phone is dying, not ignoring you</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Quick ping</h2>
+      <div class="grid" id="pings"></div>
+      <div class="row" style="margin-top:8px">
+        <input id="custom" placeholder="Short message…" maxlength="140" autocomplete="off">
+        <button id="sendCustom" type="button">Send</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Recent</h2>
+        <button id="refresh" type="button" style="min-height:36px;padding:6px 12px">Refresh</button>
+      </div>
+      <p class="muted" id="inboxNote" style="margin:8px 0 0">Loads only when you tap Refresh or open the app, so it never runs in the background.</p>
+      <ul id="inbox" style="margin-top:10px"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Until we meet</h2>
+      <div class="big" id="countdown">Set a date</div>
+      <input type="date" id="meetDate" style="margin-top:8px" aria-label="Next meeting date">
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>Get pings as notifications (recommended)</summary>
+        <p class="muted">Install the free <b>ntfy</b> app from the Play Store and subscribe to this topic. It uses the same push system as WhatsApp, so it adds almost no battery drain and this page never has to stay open.</p>
+        <p><code id="topicShow"></code></p>
+        <button id="copyTopic" type="button">Copy topic</button>
+      </details>
+      <details style="margin-top:8px">
+        <summary>Settings</summary>
+        <p class="muted">Pair code: <code id="codeShow"></code></p>
+        <button id="reset" type="button">Change name or pair code</button>
+      </details>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+// Messages go through ntfy.sh: free, no account, push via Firebase on Android.
+const NTFY = 'https://ntfy.sh/';
+const PINGS = [
+  ['💗','Miss you'], ['🏠','Home safe'], ['😴','Going to sleep'], ['☀️','Good morning'],
+  ['📵','Busy, talk later'], ['📞','Call me when free'], ['🍜','Eating now'], ['🫂','Need a hug']
+];
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem('lbl.'+k) || ''; } catch { return ''; } },
+  set(k,v){ try { localStorage.setItem('lbl.'+k, v); } catch {} }
+};
+let battery = null;
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2500);
+}
+function topic(){ return 'lowbat-' + store.get('code'); }
+function hhmm(d){ return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+function randomCode(){
+  const a = new Uint8Array(12); crypto.getRandomValues(a);
+  return Array.from(a, b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
+}
+
+async function send(text, tag, priority){
+  const name = store.get('name');
+  try {
+    const r = await fetch(NTFY + topic(), {
+      method:'POST', body:text,
+      headers:{ 'Title': name, 'Tags': tag || 'heart', 'Priority': priority || '3' }
+    });
+    if (!r.ok) throw new Error(r.status);
+    toast('Sent to your person');
+    setTimeout(loadInbox, 1500); // ntfy needs a moment before the message shows up in polls
+  } catch {
+    toast('No connection. Try again when you have signal.');
+  }
+}
+
+async function loadInbox(){
+  const ul = $('inbox');
+  try {
+    const r = await fetch(NTFY + topic() + '/json?poll=1&since=24h');
+    const lines = (await r.text()).trim().split('\n').filter(Boolean);
+    const msgs = lines.map(l => JSON.parse(l)).filter(m => m.event === 'message').slice(-15).reverse();
+    ul.replaceChildren();
+    if (!msgs.length){ $('inboxNote').textContent = 'Nothing in the last 24 hours yet. Send the first ping.'; return; }
+    $('inboxNote').textContent = 'Last 24 hours · updated ' + hhmm(new Date());
+    for (const m of msgs){
+      const li = document.createElement('li');
+      if (m.title === store.get('name')) li.className = 'me';
+      const msg = document.createElement('span'); msg.textContent = m.message;
+      const meta = document.createElement('span'); meta.className = 'meta';
+      meta.textContent = (m.title || 'Someone') + ' · ' + hhmm(new Date(m.time * 1000));
+      li.append(msg, meta); ul.append(li);
+    }
+  } catch {
+    $('inboxNote').textContent = 'Could not load messages. Check your connection and tap Refresh.';
+  }
+}
+
+function renderBattery(){
+  if (!battery){ $('batPct').textContent = '?'; $('batNote').textContent = 'This browser hides battery level.'; return; }
+  const pct = Math.round(battery.level * 100);
+  const low = pct <= 15 && !battery.charging;
+  $('batPct').textContent = pct + '%';
+  $('batPct').className = low ? 'low' : '';
+  $('batCard').classList.toggle('dying', low);
+  $('batNote').textContent = battery.charging ? 'Charging' : low ? 'Low. Say goodbye before it dies.' : 'Okay for now';
+}
+
+function renderCountdown(){
+  const v = store.get('meet'); $('meetDate').value = v;
+  if (!v){ $('countdown').textContent = 'Set a date'; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const days = Math.round((new Date(v + 'T00:00') - today) / 864e5);
+  $('countdown').textContent = days > 1 ? days + ' days' : days === 1 ? 'Tomorrow' : days === 0 ? 'Today!' : 'Set the next one';
+}
+
+function show(){
+  const ready = store.get('name') && store.get('code');
+  $('setup').hidden = !!ready; $('app').hidden = !ready;
+  if (!ready){ $('myName').value = store.get('name'); return; }
+  $('whoami').textContent = store.get('name');
+  $('topicShow').textContent = topic();
+  $('codeShow').textContent = store.get('code');
+  renderCountdown(); loadInbox();
+}
+
+// Pair code can arrive in the link: page.html#p=CODE
+const fromLink = (location.hash.match(/p=([a-z0-9]{6,40})/) || [])[1];
+if (fromLink && !store.get('code')) $('pairCode').value = fromLink;
+
+$('genCode').onclick = () => $('pairCode').value = randomCode();
+$('saveSetup').onclick = () => {
+  const n = $('myName').value.trim(), c = $('pairCode').value.trim().toLowerCase();
+  if (!n) return toast('Add your name first');
+  if (!/^[a-z0-9]{6,40}$/.test(c)) return toast('Pair code needs 6+ letters or numbers. Tap New to make one.');
+  store.set('name', n); store.set('code', c); show();
+};
+$('reset').onclick = () => { $('pairCode').value = store.get('code'); $('setup').hidden = false; $('app').hidden = true; };
+
+for (const [icon, label] of PINGS){
+  const b = document.createElement('button'); b.type = 'button';
+  b.textContent = icon + ' ' + label;
+  b.onclick = () => send(icon + ' ' + label);
+  $('pings').append(b);
+}
+$('sendCustom').onclick = () => { const v = $('custom').value.trim(); if (v){ send(v); $('custom').value = ''; } };
+$('custom').onkeydown = e => { if (e.key === 'Enter') $('sendCustom').click(); };
+$('refresh').onclick = loadInbox;
+$('dyingBtn').onclick = () => {
+  const pct = battery ? Math.round(battery.level * 100) + '%' : 'almost empty';
+  send('🪫 Phone at ' + pct + ' and about to die. Not ignoring you! Last seen ' + hhmm(new Date()) + '. Love you 💗', 'battery', '4');
+};
+$('meetDate').onchange = e => { store.set('meet', e.target.value); renderCountdown(); };
+$('copyTopic').onclick = () => navigator.clipboard.writeText(topic()).then(() => toast('Copied'), () => toast('Long-press the topic to copy it'));
+
+// Battery events fire only on change, so no polling.
+if (navigator.getBattery){
+  navigator.getBattery().then(b => {
+    battery = b; renderBattery();
+    b.addEventListener('levelchange', renderBattery);
+    b.addEventListener('chargingchange', renderBattery);
+  }).catch(renderBattery);
+} else renderBattery();
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && store.get('code')) loadInbox(); });
+show();
+</script>
+</body>
+</html>
